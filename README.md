@@ -136,9 +136,8 @@ cmake --build build -j$(nproc)
 
 | 别名 | 文件 | 架构 | 大小 | 激活参数 | 角色 |
 |------|------|------|------|----------|------|
-| **278** | `Qwen3.6-27B-UD-Q8_K_XL.gguf` | Dense | ~33 GB | 27B | 主模型（Hermes 默认，视觉，语音助手常驻） |
-| **358** | `Qwen3.6-35B-A3B-UD-Q8_K_XL.gguf` | MoE | ~37 GB | 3B | 备用模型（快速响应，按需加载） |
-| **aw35** | `Qwen-AgentWorld-35B-A3B-UD-Q8_K_XL.gguf` | MoE | ~37 GB | 3B | AgentWorld 专用模型 |
+| **278** | `Qwen3.6-27B-UD-Q8_K_XL.gguf` | Dense | ~33 GB | 27B | 主模型（OpenCode 默认，视觉，语音助手常驻） |
+| **358** | `Qwen3.6-35B-A3B-UD-Q8_K_XL.gguf` | MoE | ~37 GB | 3B | 备用模型（Hermes 默认，快速响应，按需加载） |
 
 **mmproj：**
 
@@ -147,7 +146,14 @@ cmake --build build -j$(nproc)
 | `mmproj-Qwen3.6-27B-F16.gguf` | 278 视觉投影 |
 | `mmproj-Qwen3.6-35B-A3B-F16.gguf` | 358 视觉投影 |
 
-单模型模式（`--models-max 1`），278 sleep-idle=1800s，358/aw35 sleep-idle=600s。Router 通过 LRU 自动切换。
+单模型模式（`--models-max 1`），278 sleep-idle=1800s，358 sleep-idle=600s。Router 通过 LRU 自动切换。
+
+### 客户端配置
+
+| 客户端 | 默认模型 | max_output_tokens | preserve_thinking | 说明 |
+|--------|----------|-------------------|------------------|------|
+| Hermes | 358 | 81920 | true | 主对话 + auxiliary 全部用 358，enable_thinking=false |
+| OpenCode | 278 | 81920 | true | 飞书编程助手，走 opencode-im-bridge |
 
 ---
 
@@ -206,7 +212,7 @@ mlock = 1
 numa = distribute
 reasoning-budget = 32768
 threads = 8
-temp = 1.0
+temp = 0.6
 top-p = 0.95
 top-k = 20
 presence-penalty = 0.0
@@ -215,42 +221,24 @@ slot-prompt-similarity = 0.8
 sleep-idle-seconds = 600
 alias = 358
 timeout = 3600
-
-[Qwen-AgentWorld-35B-A3B-UD-Q8_K_XL]
-n-gpu-layers = 99
-flash-attn = auto
-kv-unified = 1
-parallel = 1
-ctx-size = 262144
-batch-size = 4096
-ubatch-size = 256
-cache-ram = 16376
-mlock = 1
-numa = distribute
-reasoning-budget = 32768
-threads = 8
-temp = 1.0
-top-p = 0.95
-top-k = 20
-presence-penalty = 0.0
-min-p = 0.0
-slot-prompt-similarity = 0.8
-sleep-idle-seconds = 600
-alias = aw35
-timeout = 3600
 ```
 
 **关键参数：**
 
-| 参数 | 278 | 358 | aw35 | 说明 |
-|------|-----|-----|------|------|
-| parallel | 1 | 1 | 1 | 单并发，避免显存竞争 |
-| cache-ram | 32768 | 16376 | 16376 | MB 级 KV cache 穿透内存 |
-| cache-type | F16 | F16 | F16 | KV cache 默认精度 |
-| spec-draft-n-max | 3 | 2 | — | MTP draft token 数（27B 用 3，MoE 用 2） |
-| sleep-idle-seconds | 1800 | 600 | 600 | 空闲卸载时间（278: 30min, 358/aw35: 10min） |
-| reasoning-budget | 32768 | 32768 | 32768 | 思考模式最大 token 数 |
-| temp | 0.6 | 1.0 | 1.0 | 采样温度 |
+| 参数 | 278 | 358 | 说明 |
+|------|-----|-----|------|
+| parallel | 1 | 1 | 单并发，避免显存竞争 |
+| cache-ram | 32768 | 16376 | MB 级 KV cache 穿透内存 |
+| cache-type | F16 | F16 | KV cache 默认精度 |
+| spec-draft-n-max | 3 | 2 | MTP draft token 数（27B 用 3，MoE 用 2） |
+| sleep-idle-seconds | 1800 | 600 | 空闲卸载时间（278: 30min, 358: 10min） |
+| reasoning-budget | 32768 | 32768 | 思考模式最大 token 数 |
+| temp | 0.6 | 0.6 | 采样温度 |
+| top-p | 0.95 | 0.95 | 核采样概率阈值 |
+| top-k | 20 | 20 | 核采样候选数 |
+| min-p | 0.0 | 0.0 | 最小概率阈值 |
+| presence-penalty | 0.0 | 0.0 | 存在惩罚 |
+| repetition-penalty | 1.0 | 1.0 | 重复惩罚（默认值，未显式设置） |
 
 ---
 
