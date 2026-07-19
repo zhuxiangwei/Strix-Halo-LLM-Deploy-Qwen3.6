@@ -242,7 +242,7 @@ class LlamaServer:
         wait_clean()
 
         cmd = [
-            os.path.join(self.base_dir, "llama/llama.cpp/build" + os.environ.get("LLM_BUILD_SUFFIX", "") + "/bin/llama-server"),
+            os.path.join(self.base_dir, "llama.cpp/build" + os.environ.get("LLM_BUILD_SUFFIX", "") + "/bin/llama-server"),
             "--model", self.model_path,
             "--n-gpu-layers", "99",
             "--ctx-size", str(self.ctx),
@@ -256,7 +256,7 @@ class LlamaServer:
             "--mlock",
             "--numa", "distribute",
             "--reasoning-budget", str(DEFAULT_REASONING_BUDGET),
-            "--reasoning-preserve", "1",
+            "--reasoning-preserve",
             "--cache-type-k", self.cache_type_k,
             "--cache-type-v", self.cache_type_v,
             "--kv-unified",
@@ -281,7 +281,14 @@ class LlamaServer:
         log_path = os.path.join(self.base_dir, "test/server_bench.log")
         os.makedirs(os.path.dirname(log_path), exist_ok=True)
         log_fh = open(log_path, "w")
-        proc = subprocess.Popen(cmd, stdout=log_fh, stderr=subprocess.STDOUT)
+
+        # HIP/ROCm 后端需要 LD_LIBRARY_PATH
+        env = os.environ.copy()
+        if os.environ.get("LLM_BUILD_SUFFIX") == "-hip":
+            rocm_lib = "/opt/rocm/lib"
+            env["LD_LIBRARY_PATH"] = rocm_lib + (":" + env["LD_LIBRARY_PATH"] if env.get("LD_LIBRARY_PATH") else "")
+
+        proc = subprocess.Popen(cmd, stdout=log_fh, stderr=subprocess.STDOUT, env=env)
         self.pid = proc.pid
         kv_desc = f"KV={self.cache_type_k}/{self.cache_type_v}" if self.cache_type_k != "f16" else "F16 KV"
         print(f"  [SERVER] Started PID={self.pid}, UB={self.ubatch}, {kv_desc}")
