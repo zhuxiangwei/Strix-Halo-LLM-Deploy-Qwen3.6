@@ -7,6 +7,11 @@ Q8_0 KV UB=512 (optimal config).
 Usage:
     LLM_BASE_DIR=/home/zxw LLM_API_KEY=xxx python3 -u 02.bench_278.py
     python3 -u 02.bench_278.py --kv f16
+
+    # HIP/ROCm backend:
+    LLM_BUILD_SUFFIX=-hip LLM_BASE_DIR=/home/zxw LLM_API_KEY=xxx python3 -u 02.bench_278.py
+    # Vulkan backend:
+    LLM_BUILD_SUFFIX=-vulkan LLM_BASE_DIR=/home/zxw LLM_API_KEY=xxx python3 -u 02.bench_278.py
 """
 
 import os, sys, time, argparse
@@ -18,7 +23,7 @@ MODEL_PATH = os.path.join(_BASE_DIR, "model/Qwen3.6-27B-UD-Q8_K_XL.gguf")
 API_KEY = os.environ.get("LLM_API_KEY", "")
 ALIAS = "278"
 
-CONFIGS = [("f16", [512])]
+CONFIGS = [("f16", [256])]
 
 TEST_POINTS = [
     ("p128", 128), ("p4K", 4096), ("p32K", 32768),
@@ -76,6 +81,7 @@ def main():
             server = benchlib.LlamaServer(
                 model_path=MODEL_PATH, alias=ALIAS, base_dir=_BASE_DIR,
                 api_key=API_KEY, ubatch=ub, cache_type_k=kv, cache_type_v=kv,
+                spec_draft_n_max=3,
             )
 
             try:

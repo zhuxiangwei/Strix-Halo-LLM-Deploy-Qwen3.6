@@ -27,9 +27,9 @@ DEFAULT_CTX = 262144  # parallel=1 × 262144 per slot
 DEFAULT_BATCH = 4096
 DEFAULT_UBATCH = 256  # both models unified at 256 for stability
 DEFAULT_THREADS = 8
-DEFAULT_REASONING_BUDGET = 16384
-DEFAULT_CACHE_RAM_278 = 16384
-DEFAULT_CACHE_RAM_358 = 4096
+DEFAULT_REASONING_BUDGET = 32768
+DEFAULT_CACHE_RAM_278 = 49152
+DEFAULT_CACHE_RAM_358 = 49152
 DEFAULT_SLOT_PROMPT_SIMILARITY = 0.8
 DEFAULT_SERVER_PORT = 12345
 DEFAULT_SERVER_READY_TIMEOUT = 180
@@ -214,6 +214,7 @@ class LlamaServer:
                  port=DEFAULT_SERVER_PORT, parallel=1,
                  cache_ram=None, slot_prompt_similarity=DEFAULT_SLOT_PROMPT_SIMILARITY,
                  mmproj_path=None, cache_reuse=None,
+                 spec_draft_n_max=2,
                  ready_timeout=DEFAULT_SERVER_READY_TIMEOUT):
         self.model_path = model_path
         self.alias = alias
@@ -231,6 +232,7 @@ class LlamaServer:
         self.slot_prompt_similarity = slot_prompt_similarity
         self.mmproj_path = mmproj_path
         self.cache_reuse = cache_reuse
+        self.spec_draft_n_max = spec_draft_n_max
         self.ready_timeout = ready_timeout
         self.pid = None
 
@@ -240,20 +242,21 @@ class LlamaServer:
         wait_clean()
 
         cmd = [
-            os.path.join(self.base_dir, "llama/llama.cpp/build/bin/llama-server"),
+            os.path.join(self.base_dir, "llama/llama.cpp/build" + os.environ.get("LLM_BUILD_SUFFIX", "") + "/bin/llama-server"),
             "--model", self.model_path,
             "--n-gpu-layers", "99",
             "--ctx-size", str(self.ctx),
             "--batch-size", str(self.batch),
             "--ubatch-size", str(self.ubatch),
             "--threads", str(self.threads),
-            "--flash-attn", "on",
+            "--flash-attn", "auto",
             "--parallel", str(self.parallel),
             "--spec-type", "draft-mtp",
-            "--spec-draft-n-max", "2",
+            "--spec-draft-n-max", str(self.spec_draft_n_max),
             "--mlock",
             "--numa", "distribute",
             "--reasoning-budget", str(DEFAULT_REASONING_BUDGET),
+            "--reasoning-preserve", "1",
             "--cache-type-k", self.cache_type_k,
             "--cache-type-v", self.cache_type_v,
             "--kv-unified",

@@ -7,6 +7,11 @@ F16 KV UB=256 (optimal 256K) + UB=512 (optimal ≤128K).
 Usage:
     LLM_BASE_DIR=/home/zxw LLM_API_KEY=xxx python3 -u 01.bench_358.py
     python3 -u 01.bench_358.py --kv f16 --ub 256
+
+    # HIP/ROCm backend:
+    LLM_BUILD_SUFFIX=-hip LLM_BASE_DIR=/home/zxw LLM_API_KEY=xxx python3 -u 01.bench_358.py
+    # Vulkan backend:
+    LLM_BUILD_SUFFIX=-vulkan LLM_BASE_DIR=/home/zxw LLM_API_KEY=xxx python3 -u 01.bench_358.py
 """
 
 import os, sys, time, argparse
@@ -19,7 +24,7 @@ MMPROJ_PATH = os.path.join(_BASE_DIR, "model/mmproj-F16.gguf")
 API_KEY = os.environ.get("LLM_API_KEY", "")
 ALIAS = "358"
 
-CONFIGS = [("f16", [256, 512])]
+CONFIGS = [("f16", [256])]
 
 TEST_POINTS = [
     ("p128", 128), ("p4K", 4096), ("p32K", 32768),
