@@ -8,11 +8,11 @@
 
 ## 性能基准
 
-所有数据在推理机（AMD Ryzen AI Max+ 395，128 GB LPDDR5X，Radeon 8060S，llama.cpp b9828 Vulkan）上测量。
+所有数据在推理机（AMD Ryzen AI Max+ 395，128 GB LPDDR5X，Radeon 8060S，llama.cpp b10046 Vulkan）上测量。
 
 ### 27B Dense Q8（别名 `278`）
 
-Dense 模型，每个 token 激活全部 27B 参数。配置：F16 KV + UB=256 + cache-ram=32768 + parallel=1 + MTP n=3。
+Dense 模型，每个 token 激活全部 27B 参数。配置：F16 KV + UB=256 + cache-ram=49152 + parallel=1 + MTP n=3 + reasoning-preserve=1。
 
 **生成速度：**
 
@@ -38,7 +38,7 @@ Dense 模型，每个 token 激活全部 27B 参数。配置：F16 KV + UB=256 +
 
 ### 35B-A3B MoE（别名 `358`）
 
-MoE 模型，每个 token 仅激活 3B/35B 参数。配置：F16 KV + UB=256 + cache-ram=16376 + parallel=1 + MTP n=2。
+MoE 模型，每个 token 仅激活 3B/35B 参数。配置：F16 KV + UB=256 + cache-ram=49152 + parallel=1 + MTP n=2 + reasoning-preserve=1。
 
 **生成速度：**
 
@@ -124,11 +124,11 @@ GRUB_CMDLINE_LINUX_DEFAULT="amd_iommu=off amdgpu.gttsize=122880 processor.max_cs
 
 ```bash
 cd ~/llama.cpp && git pull origin master
-cmake -B build --fresh -DGGML_VULKAN=ON -DCMAKE_BUILD_TYPE=Release
-cmake --build build -j$(nproc)
+cmake -B build-vulkan --fresh -DGGML_VULKAN=ON -DCMAKE_BUILD_TYPE=Release
+cmake --build build-vulkan -j$(nproc)
 ```
 
-> 编译后二进制位于 `~/llama.cpp/build/bin/`。环境变量 `GGML_VK_MAX_NODES_PER_SUBMIT=1`（防 APU GPU job timeout）。
+> 编译后二进制位于 `~/llama.cpp/build-vulkan/bin/`。环境变量 `GGML_VK_MAX_NODES_PER_SUBMIT=1`（防 APU GPU job timeout）。
 
 ---
 
@@ -146,14 +146,14 @@ cmake --build build -j$(nproc)
 | `mmproj-Qwen3.6-27B-F16.gguf` | 278 视觉投影 |
 | `mmproj-Qwen3.6-35B-A3B-F16.gguf` | 358 视觉投影 |
 
-单模型模式（`--models-max 1`），278 sleep-idle=1800s，358 sleep-idle=600s。Router 通过 LRU 自动切换。
+单模型模式（`--models-max 1`），278 和 358 均设 sleep-idle=1800s。Router 通过 LRU 自动切换。
 
 ### 客户端配置
 
 | 客户端 | 默认模型 | max_output_tokens | preserve_thinking | 说明 |
 |--------|----------|-------------------|------------------|------|
 | Hermes | 358 | 81920 | true | 主对话 + auxiliary 全部用 358，enable_thinking=false |
-| OpenCode | 278 | 81920 | true | 飞书编程助手，走 opencode-im-bridge |
+| OpenCode | 278 | 81920 | true | 飞书编程助手，走 opencode-bridge@3.1.5 |
 
 ---
 
@@ -178,12 +178,13 @@ batch-size = 4096
 ubatch-size = 256
 spec-type = draft-mtp
 spec-draft-n-max = 3
-cache-ram = 32768
+cache-ram = 49152
 mmproj = /home/$USER/mmproj/mmproj-Qwen3.6-27B-F16.gguf
 image-min-tokens = 2048
 mlock = 1
 numa = distribute
 reasoning-budget = 32768
+reasoning-preserve = 1
 threads = 8
 temp = 0.6
 top-p = 0.95
@@ -205,12 +206,13 @@ batch-size = 4096
 ubatch-size = 256
 spec-type = draft-mtp
 spec-draft-n-max = 2
-cache-ram = 16376
+cache-ram = 49152
 mmproj = /home/$USER/mmproj/mmproj-Qwen3.6-35B-A3B-F16.gguf
 image-min-tokens = 2048
 mlock = 1
 numa = distribute
 reasoning-budget = 32768
+reasoning-preserve = 1
 threads = 8
 temp = 0.6
 top-p = 0.95
@@ -218,7 +220,7 @@ top-k = 20
 presence-penalty = 0.0
 min-p = 0.0
 slot-prompt-similarity = 0.8
-sleep-idle-seconds = 600
+sleep-idle-seconds = 1800
 alias = 358
 timeout = 3600
 ```
@@ -228,10 +230,11 @@ timeout = 3600
 | 参数 | 278 | 358 | 说明 |
 |------|-----|-----|------|
 | parallel | 1 | 1 | 单并发，避免显存竞争 |
-| cache-ram | 32768 | 16376 | MB 级 KV cache 穿透内存 |
+| cache-ram | 49152 | 49152 | MB 级 KV cache 穿透内存 |
 | cache-type | F16 | F16 | KV cache 默认精度 |
+| reasoning-preserve | 1 | 1 | 保留思考链（b10046 新增） |
 | spec-draft-n-max | 3 | 2 | MTP draft token 数（27B 用 3，MoE 用 2） |
-| sleep-idle-seconds | 1800 | 600 | 空闲卸载时间（278: 30min, 358: 10min） |
+| sleep-idle-seconds | 1800 | 1800 | 空闲卸载时间（均为 30min） |
 | reasoning-budget | 32768 | 32768 | 思考模式最大 token 数 |
 | temp | 0.6 | 0.6 | 采样温度 |
 | top-p | 0.95 | 0.95 | 核采样概率阈值 |
@@ -274,9 +277,10 @@ WantedBy=default.target
 ```bash
 #!/bin/bash
 # Qwen3.6 LLM Router Service (systemd compatible - foreground)
+# Vulkan backend
 
 LOGDIR="/home/$USER/logs/llama"
-BINDIR="/home/$USER/llama.cpp/build/bin"
+BINDIR="/home/$USER/llama.cpp/build-vulkan/bin"
 ROUTER="$BINDIR/llama-server"
 
 export LD_LIBRARY_PATH="$BINDIR${LD_LIBRARY_PATH:+:$LD_LIBRARY_PATH}"
@@ -331,4 +335,4 @@ curl http://127.0.0.1:12345/v1/chat/completions \
 
 ---
 
-*推理机 · AMD Ryzen AI Max+ 395 · 128 GB LPDDR5X · Radeon 8060S · llama.cpp b9828 Vulkan*
+*推理机 · AMD Ryzen AI Max+ 395 · 128 GB LPDDR5X · Radeon 8060S · llama.cpp b10046 Vulkan*
