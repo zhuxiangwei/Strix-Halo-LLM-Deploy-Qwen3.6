@@ -189,11 +189,11 @@ def release_lock(lock_name="bench"):
 # NOTE: Router service should be manually disabled before benchmarks.
 def disable_router_service():
     """Stop and disable llm-router service."""
-    print("  [SERVICE] Stopping and disabling llm-router...")
+    print("  [SERVICE] Stopping and disabling llama-router...")
     try:
-        subprocess.run(["systemctl", "--user", "stop", "llm-router.service"],
+        subprocess.run(["systemctl", "--user", "stop", "llama-router.service"],
                        capture_output=True, timeout=30)
-        subprocess.run(["systemctl", "--user", "disable", "llm-router.service"],
+        subprocess.run(["systemctl", "--user", "disable", "llama-router.service"],
                        capture_output=True, timeout=30)
     except Exception as e:
         print(f"  [SERVICE] Warning: {e}")
@@ -282,13 +282,7 @@ class LlamaServer:
         os.makedirs(os.path.dirname(log_path), exist_ok=True)
         log_fh = open(log_path, "w")
 
-        # HIP/ROCm 后端需要 LD_LIBRARY_PATH
-        env = os.environ.copy()
-        if os.environ.get("LLM_BUILD_SUFFIX") == "-hip":
-            rocm_lib = "/opt/rocm/lib"
-            env["LD_LIBRARY_PATH"] = rocm_lib + (":" + env["LD_LIBRARY_PATH"] if env.get("LD_LIBRARY_PATH") else "")
-
-        proc = subprocess.Popen(cmd, stdout=log_fh, stderr=subprocess.STDOUT, env=env)
+        proc = subprocess.Popen(cmd, stdout=log_fh, stderr=subprocess.STDOUT)
         self.pid = proc.pid
         kv_desc = f"KV={self.cache_type_k}/{self.cache_type_v}" if self.cache_type_k != "f16" else "F16 KV"
         print(f"  [SERVER] Started PID={self.pid}, UB={self.ubatch}, {kv_desc}")

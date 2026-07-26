@@ -2,64 +2,64 @@
 
 在 AMD Ryzen AI Max+ 395（Strix Halo）上使用 llama.cpp + Vulkan 部署 Qwen3.6 大语言模型，通过 SSH 反向隧道 + Nginx HTTPS 将推理 API 暴露到公网。
 
-> 语音助手与监控播报子系统详见 [AI-MAX-395-Qwen3-ASR-TTS](https://github.com/yourname/AI-MAX-395-Qwen3-ASR-TTS)（ASR/TTS/AI Station 均在该项目中）。
+> 语音助手与监控播报子系统已停用，不在本仓库范围内。
 
 ---
 
 ## 性能基准
 
-所有数据在推理机（AMD Ryzen AI Max+ 395，128 GB LPDDR5X，Radeon 8060S，llama.cpp b10046 Vulkan）上测量。
-
-### 27B Dense Q8（别名 `278`）
-
-Dense 模型，每个 token 激活全部 27B 参数。配置：F16 KV + UB=256 + cache-ram=49152 + parallel=1 + MTP n=3 + reasoning-preserve=1。
-
-**生成速度：**
-
-| 上下文 | P50 (t/s) | 平均 (t/s) |
-|--------|-----------|------------|
-| <4K    | 10.9      | 11.2       |
-| 4–16K  | 11.8      | 11.8       |
-| 16–64K | 12.7      | 12.3       |
-| 64–130K| 10.0      | 10.2       |
-
-**Prefill 速度：**
-
-| Prompt 长度 | P50 (t/s) |
-|-------------|-----------|
-| <1K         | 38.1      |
-| 1K–5K       | 40.2      |
-| 5K–10K      | 54.0      |
-| 10K–30K     | 132.6     |
-| 30K–60K     | 93.2      |
-| 60K–130K    | 63.9      |
-
-> MTP 接受率：均值 87.1%，中位数 89.2%。
+所有数据在推理机（AMD Ryzen AI Max+ 395，128 GB LPDDR5X，Radeon 8060S，llama.cpp b10068 Vulkan）上测量。基准测试使用统一脚本串行执行，每轮冷启动、不并发，F16 KV cache，UB=256。
 
 ### 35B-A3B MoE（别名 `358`）
 
 MoE 模型，每个 token 仅激活 3B/35B 参数。配置：F16 KV + UB=256 + cache-ram=49152 + parallel=1 + MTP n=2 + reasoning-preserve=1。
 
-**生成速度：**
+| 测试点 | Prompt tokens | Prefill (t/s) | Gen (t/s) | MTP 接受率 | TTFT (s) | 总耗时 (s) |
+|--------|-------------|--------------|-----------|-----------|---------|-----------|
+| p128   | 159         | 251.3        | 64.6      | 76.3%     | 0.63    | 17.75     |
+| p4K    | 7,683       | 666.3        | 63.0      | 77.5%     | 11.53   | 28.80     |
+| p32K   | 36,517      | 523.4        | 58.5      | 81.0%     | 69.77   | 86.43     |
+| p64K   | 69,310      | 452.1        | 50.4      | 76.5%     | 153.30  | 174.13    |
+| p128K  | 132,432     | 354.0        | 43.7      | 81.5%     | 374.10  | 396.05    |
+| p256K  | 250,190     | 240.2        | 32.7      | 79.8%     | 1041.37 | 1060.06   |
 
-| 上下文  | P50 (t/s) | 平均 (t/s) |
-|---------|-----------|------------|
-| <4K     | 53.3      | 52.8       |
-| 4–16K   | 48.3      | 49.0       |
-| 16–64K  | 47.2      | 48.3       |
-| 64–130K | 44.2      | 45.0       |
+> 满载温度：GPU 峰值 70°C / CPU 峰值 70°C，远低于节流阈值 90°C。
 
-> MTP 接受率：均值 86.8%，中位数 88.2%（MoE 架构接受率偏低 ~40%）。
+### 27B Dense Q8（别名 `278`）
+
+Dense 模型，每个 token 激活全部 27B 参数。配置：F16 KV + UB=256 + cache-ram=49152 + parallel=1 + MTP n=3 + reasoning-preserve=1。
+
+| 测试点 | Prompt tokens | Prefill (t/s) | Gen (t/s) | MTP 接受率 | TTFT (s) | 总耗时 (s) |
+|--------|-------------|--------------|-----------|-----------|---------|-----------|
+| p128   | 159         | 142.0        | 14.7      | 72.7%     | 1.12    | 42.95     |
+| p4K    | 7,683       | 245.7        | 14.5      | 73.4%     | 31.26   | 81.43     |
+| p32K   | 36,517      | 192.3        | 13.0      | 69.6%     | 189.87  | 235.57    |
+| p64K   | 69,310      | 108.5        | 12.4      | 72.3%     | 639.05  | 721.12    |
+| p128K  | 132,432     | 47.1         | 10.8      | 72.0%     | 2808.91 | 2864.03   |
+| p256K  | 241,822     | ~26.0¹       | —²       | —³        | —       | >8249（GPU 崩溃）|
+
+> ¹ **p256K prefill 部分数据**（来自 llama-server `print_timing` 日志）：prefill 到 212,992/241,822 token（85%）时 Vulkan GPU 崩溃（`ErrorDeviceLost`），未进入生成阶段。瞬时 prefill 速度从 253 t/s（4K）衰减到 25.8 t/s（213K），累计平均 26.0 t/s。这是 Dense 27B attention O(n²) 在超长上下文的物理极限，叠加 Vulkan 驱动在超长 compute shader 链下的稳定性问题。
+>
+> ² 无生成数据（prefill 未完成）。
+>
+> ³ 无 MTP 数据（未进入生成阶段）。
+>
+> 满载温度：GPU 峰值 72°C / CPU 峰值 71°C，远低于节流阈值 90°C。
 
 ### 跨模型对比
 
-| Prompt    | 35B UD-Q8 | 27B Q8 |
-|-----------|-----------|--------|
-| p128 Gen  | 56.7 t/s  | 13.8 t/s |
-| p4K Gen   | 56.7 t/s  | 13.4 t/s |
-| p32K Gen  | 50.1 t/s  | 12.5 t/s |
-| p64K Gen  | 46.7 t/s  | 12.1 t/s |
-| p128K Gen | 38.0 t/s  | 10.0 t/s |
+| 测试点 | 358 Prefill (t/s) | 358 Gen (t/s) | 278 Prefill (t/s) | 278 Gen (t/s) | 358/278 Gen 倍率 |
+|--------|-------------------|---------------|-------------------|---------------|------------------|
+| p128   | 251.3             | 64.6          | 142.0             | 14.7          | 4.4×             |
+| p4K    | 666.3             | 63.0          | 245.7             | 14.5          | 4.3×             |
+| p32K   | 523.4             | 58.5          | 192.3             | 13.0          | 4.5×             |
+| p64K   | 452.1             | 50.4          | 108.5             | 12.4          | 4.1×             |
+| p128K  | 354.0             | 43.7          | 47.1              | 10.8          | 4.0×             |
+| p256K  | 240.2             | 32.7          | —                 | —             | —                |
+
+> 358（MoE 3B 激活）gen 速度约为 278（Dense 27B）的 **4-4.5 倍**，prefill 速度约为 **1.8-5.2 倍**。随上下文增长，两者 prefill 差距拉大（MoE 稀疏激活优势在长序列更明显）。278 在 p256K 因 Dense 架构 O(n²) attention 计算量过大无法在超时内完成。
+>
+> MTP 接受率：278（n=3）平均 72.0%，358（n=2）平均 78.8%。
 
 ---
 
@@ -77,13 +77,12 @@ MoE 模型，每个 token 仅激活 3B/35B 参数。配置：F16 KV + UB=256 + c
 │ AMD AI Max+395│
 │ 128 GB RAM   │
 └──────────────┘
-     ├─ llama-router :12345  (278/358, Vulkan GPU)
-     ├─ qwen3-asr    :12347  ─┐
-     ├─ qwen3-tts    :12348  ─┤→ 详见 ASR-TTS 项目
-     └─ ai-station           ─┘
+     └─ llama-router :12345  (278/358, Vulkan GPU)
 ```
 
 llama.cpp 仅绑定 `127.0.0.1:12345`，云服务器运行 Nginx（端口 443），SSH 反向隧道提供 NAT 穿透。参考 `docs/` 中 Nginx 配置模板，SSE 需关闭 gzip 和 buffering。llama-tunnel.service 通过 SSH 反向隧道暴露推理 API。hw-temp.service 每 60 秒记录硬件温度。
+
+> ASR/TTS/AI Station 语音助手子系统已停用，不在本仓库范围内。
 
 ---
 
@@ -232,7 +231,7 @@ timeout = 3600
 | parallel | 1 | 1 | 单并发，避免显存竞争 |
 | cache-ram | 49152 | 49152 | MB 级 KV cache 穿透内存 |
 | cache-type | F16 | F16 | KV cache 默认精度 |
-| reasoning-preserve | 1 | 1 | 保留思考链（b10046 新增） |
+| reasoning-preserve | 1 | 1 | 保留思考链（b10068 支持） |
 | spec-draft-n-max | 3 | 2 | MTP draft token 数（27B 用 3，MoE 用 2） |
 | sleep-idle-seconds | 1800 | 1800 | 空闲卸载时间（均为 30min） |
 | reasoning-budget | 32768 | 32768 | 思考模式最大 token 数 |
@@ -335,4 +334,5 @@ curl http://127.0.0.1:12345/v1/chat/completions \
 
 ---
 
-*推理机 · AMD Ryzen AI Max+ 395 · 128 GB LPDDR5X · Radeon 8060S · llama.cpp b10046 Vulkan*
+*推理机 · AMD Ryzen AI Max+ 395 · 128 GB LPDDR5X · Radeon 8060S · llama.cpp b10068 Vulkan*
+*基准测试日期：2026-07-26 · F16 KV · UB=256 · Vulkan 后端*
